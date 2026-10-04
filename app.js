@@ -1,5 +1,6 @@
 const STORAGE_KEY = "qingshen-state-v1";
 const PHOTO_DB = "qingshen-photos-v1";
+const DEEPSEEK_KEY = "qingshen-deepseek-key";
 const quickFoods = [
   { name: "米饭", kcal: 232, portion: "约 1 碗 / 200g" },
   { name: "鸡胸肉", kcal: 248, portion: "约 150g" },
@@ -96,6 +97,7 @@ function updateUI() {
   renderPlan(plan);
   renderProgress();
   renderCoach(plan, consumed);
+  updateAiStatus();
 }
 
 function timeGreeting() { const h = new Date().getHours(); return h < 11 ? "早上好" : h < 18 ? "下午好" : "晚上好"; }
@@ -207,8 +209,12 @@ function openMeal(photo = null) {
   const h = new Date().getHours(); $("#mealType").value = h < 10 ? "早餐" : h < 16 ? "午餐" : h < 21 ? "晚餐" : "加餐";
   $("#mealPreview").hidden = !photo;
   if (photo) $("#mealPreview").src = URL.createObjectURL(photo);
+  $("#aiResults").hidden = true;
+  $("#aiResults").innerHTML = "";
+  setAnalysisState(photo ? "loading" : "manual");
   $$(".food-chip").forEach((el) => el.classList.remove("active"));
   openModal("mealModal");
+  if (photo) analyzeMeal(photo);
 }
 
 async function compressImage(file) {
@@ -218,6 +224,102 @@ async function compressImage(file) {
   return new Promise((resolve)=>canvas.toBlob(resolve,"image/jpeg",.74));
 }
 function escapeHtml(value="") { return String(value).replace(/[&<>'"]/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char])); }
+
+function getDeepSeekKey() { return sessionStorage.getItem(DEEPSEEK_KEY) || localStorage.getItem(DEEPSEEK_KEY) || ""; }
+function updateAiStatus() {
+  const configured = Boolean(getDeepSeekKey());
+  $("#aiStatus").textContent = configured ? "已配置 · 拍照后自动识别" : "未配置 · 点击添加 API 密钥";
+  $("#removeKeyButton").hidden = !configured;
+}
+function openAiSettings() {
+  $("#deepSeekKey").value = "";
+  $("#deepSeekKey").placeholder = getDeepSeekKey() ? "已配置，可输入新密钥替换" : "sk-••••••••••••";
+  $("#rememberKey").checked = Boolean(localStorage.getItem(DEEPSEEK_KEY)) || !getDeepSeekKey();
+  $("#deepSeekKey").required = !getDeepSeekKey();
+  updateAiStatus();
+  openModal("infoModal");
+}
+function setAnalysisState(kind, message = "") {
+  const note = $("#analysisNote");
+  note.className = `analysis-note${kind === "loading" ? " loading" : ""}${kind === "error" ? " error" : ""}`;
+  const states = {
+    loading: ["◌", "DeepSeek 正在识别", "正在分析食物、份量和热量，请稍候。"],
+    done: ["✓", "识别完成，请确认", message || "照片无法准确判断隐藏油脂和重量，请按实际情况修正。"],
+    needsKey: ["✦", "添加 DeepSeek 密钥后自动识别", "密钥只保存在此设备，不会写入公开网页源码。"],
+    error: ["!", "识别失败", message || "你仍可使用常见食物或手动填写。"],
+    manual: ["✦", "辅助估算模式", "选择常见食物可快速估算，保存前请根据实际份量确认。"]
+  };
+  const [icon, title, body] = states[kind] || states.manual;
+  note.innerHTML = `<span>${icon}</span><p><strong>${escapeHtml(title)}</strong><br />${escapeHtml(body)}</p>`;
+}
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
+}
+function validateAiResult(result) {
+  if (!result || !Array.isArray(result.items) || result.items.length === 0) throw new Error("没有识别到可记录的食物");
+  const items = result.items.slice(0, 12).map((item) => ({
+    name: String(item.name || "未知食物").slice(0, 40),
+    portion: String(item.portion || "份量不确定").slice(0, 50),
+    estimatedGrams: Math.max(0, Number(item.estimatedGrams) || 0),
+    calories: Math.max(0, Math.min(5000, Math.round(Number(item.calories) || 0))),
+    confidence: Math.max(0, Math.min(1, Number(item.confidence) || 0))
+  }));
+  const calculatedTotal = items.reduce((sum, item) => sum + item.calories, 0);
+  return {
+    mealName: String(result.mealName || items.map((i) => i.name).join("、")).slice(0, 60),
+    items,
+    totalCalories: Math.max(0, Math.min(5000, Math.round(Number(result.totalCalories) || calculatedTotal))),
+    uncertainty: String(result.uncertainty || "照片估算可能遗漏烹调油、酱料或被遮挡的食物。").slice(0, 160)
+  };
+}
+async function requestDeepSeek(photo, key) {
+  const imageUrl = await blobToDataUrl(photo);
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+    body: JSON.stringify({
+      model: "deepseek-flash",
+      messages: [
+        { role: "system", content: "你是一名谨慎的食物营养估算助手。只分析图片中可见的食物和饮料，不做医疗诊断。热量必须按可见份量估算，并明确不确定性。" },
+        { role: "user", content: [
+          { type: "text", text: "识别这张餐食照片。请只输出 JSON，格式示例：{\"mealName\":\"鸡胸肉蔬菜饭\",\"items\":[{\"name\":\"米饭\",\"portion\":\"约1碗\",\"estimatedGrams\":200,\"calories\":232,\"confidence\":0.8}],\"totalCalories\":520,\"uncertainty\":\"烹调油用量不可见\"}。items 列出每种食物；calories 与 totalCalories 使用千卡整数；confidence 为 0 到 1。不要输出 Markdown。" },
+          { type: "image_url", image_url: { url: imageUrl, detail: "low" } }
+        ] }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1000,
+      temperature: 0.2,
+      stream: false
+    })
+  });
+  if (!response.ok) {
+    const code = response.status;
+    if (code === 401 || code === 403) throw new Error("API 密钥无效或没有权限，请在设置中更换密钥。");
+    if (code === 402) throw new Error("DeepSeek 账户余额不足，请充值后再试。");
+    if (code === 429) throw new Error("请求过于频繁，请稍后再试。");
+    throw new Error(`DeepSeek 暂时不可用（${code}）。`);
+  }
+  const payload = await response.json();
+  const content = payload?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("DeepSeek 没有返回识别结果，请重试。");
+  return validateAiResult(JSON.parse(content));
+}
+async function analyzeMeal(photo) {
+  const key = getDeepSeekKey();
+  if (!key) { setAnalysisState("needsKey"); openAiSettings(); return; }
+  setAnalysisState("loading");
+  try {
+    const result = await requestDeepSeek(photo, key);
+    $("#mealName").value = result.mealName;
+    $("#mealCalories").value = result.totalCalories;
+    $("#mealPortion").value = result.items.map((item) => `${item.name}${item.estimatedGrams ? `约${item.estimatedGrams}g` : ` ${item.portion}`}`).join("；").slice(0, 40);
+    $("#aiResults").innerHTML = result.items.map((item) => `<div class="ai-result-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.portion)}${item.estimatedGrams ? ` · 约 ${item.estimatedGrams}g` : ""} · 置信度 ${Math.round(item.confidence * 100)}%</small></div><b>${item.calories} 千卡</b></div>`).join("") + `<div class="ai-disclaimer">${escapeHtml(result.uncertainty)}</div>`;
+    $("#aiResults").hidden = false;
+    setAnalysisState("done", "AI 已自动填写结果；保存前请按实际份量修正。");
+  } catch (error) {
+    setAnalysisState("error", error?.message || "请稍后重试，或手动填写本餐。");
+  }
+}
 
 $("#quickFoods").innerHTML = quickFoods.map((f,i)=>`<button class="food-chip" type="button" data-food="${i}">${f.name} · ${f.kcal}</button>`).join("");
 $("#quickFoods").addEventListener("click", (event) => {
@@ -258,7 +360,17 @@ $("#photoInput").addEventListener("change",async(event)=>{const file=event.targe
 $("#manualAddButton").addEventListener("click",()=>openMeal());
 $("#profileButton").addEventListener("click",openProfile);$("#editProfileButton").addEventListener("click",openProfile);
 $("#addWeightButton").addEventListener("click",()=>{$("#weightInput").value=state.profile?.weight||"";$("#weightDate").value=todayKey();openModal("weightModal");});
-$("#aiInfoButton").addEventListener("click",()=>openModal("infoModal"));
+$("#aiInfoButton").addEventListener("click",openAiSettings);
+$("#apiKeyForm").addEventListener("submit", (event) => {
+  event.preventDefault(); const entered = $("#deepSeekKey").value.trim(); const existing = getDeepSeekKey(); const key = entered || existing;
+  if (!key || !key.startsWith("sk-") || key.length < 20) return void toast("请输入有效的 DeepSeek API 密钥");
+  sessionStorage.removeItem(DEEPSEEK_KEY); localStorage.removeItem(DEEPSEEK_KEY);
+  if ($("#rememberKey").checked) localStorage.setItem(DEEPSEEK_KEY, key); else sessionStorage.setItem(DEEPSEEK_KEY, key);
+  $("#deepSeekKey").value = ""; closeModal("infoModal"); updateAiStatus(); toast("DeepSeek 识图已启用");
+  if (pendingPhoto && !$("#mealModal").hidden) analyzeMeal(pendingPhoto);
+});
+$("#toggleKeyButton").addEventListener("click", () => { const input=$("#deepSeekKey"); const show=input.type==="password"; input.type=show?"text":"password"; $("#toggleKeyButton").textContent=show?"隐藏":"显示"; });
+$("#removeKeyButton").addEventListener("click", () => { sessionStorage.removeItem(DEEPSEEK_KEY); localStorage.removeItem(DEEPSEEK_KEY); $("#deepSeekKey").value=""; updateAiStatus(); closeModal("infoModal"); toast("本机密钥已移除"); });
 $("#exportButton").addEventListener("click",()=>{const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),state},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`轻身备份-${todayKey()}.json`;a.click();URL.revokeObjectURL(a.href);toast("备份已导出（照片不包含在内）");});
 $("#importInput").addEventListener("change",async(event)=>{const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());if(!parsed.state||!Array.isArray(parsed.state.meals))throw new Error();if(confirm("恢复备份会覆盖当前文字记录，是否继续？")){state={...defaultState,...parsed.state};saveState();updateUI();toast("备份已恢复");}}catch{toast("这不是有效的轻身备份文件");}event.target.value="";});
 $("#clearDataButton").addEventListener("click",async()=>{if(!confirm("确定清除全部资料、饮食和体重记录？此操作无法撤销。"))return;localStorage.removeItem(STORAGE_KEY);try{indexedDB.deleteDatabase(PHOTO_DB);}catch{}state={...defaultState,meals:[],weights:[],completedActions:[]};updateUI();navigate("today");openProfile();toast("本机数据已清除");});

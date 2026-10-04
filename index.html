@@ -115,11 +115,11 @@
             <button class="setting-row" id="editProfileButton" type="button"><span class="setting-icon">人</span><span><strong>个人资料与目标</strong><small>修改体重、活动量与减脂节奏</small></span><b>›</b></button>
             <button class="setting-row" id="exportButton" type="button"><span class="setting-icon">出</span><span><strong>导出备份</strong><small>下载全部记录为 JSON 文件</small></span><b>›</b></button>
             <label class="setting-row file-row"><span class="setting-icon">入</span><span><strong>恢复备份</strong><small>从之前导出的 JSON 文件恢复</small></span><b>›</b><input id="importInput" type="file" accept="application/json" /></label>
-            <button class="setting-row" id="aiInfoButton" type="button"><span class="setting-icon">AI</span><span><strong>照片 AI 识别</strong><small id="aiStatus">待启用 · 当前使用辅助估算</small></span><b>›</b></button>
+            <button class="setting-row" id="aiInfoButton" type="button"><span class="setting-icon">AI</span><span><strong>DeepSeek 照片识别</strong><small id="aiStatus">未配置 · 点击添加 API 密钥</small></span><b>›</b></button>
           </div>
-          <article class="privacy-card"><strong>照片与隐私</strong><p>照片仅在你的设备上压缩和保存，不会自动上传。删除饮食记录时，对应照片也会删除。</p></article>
+          <article class="privacy-card"><strong>照片与隐私</strong><p>启用识图时，压缩后的照片会发送给 DeepSeek 分析；饮食记录和照片仍保存在你的设备中。删除饮食记录时，对应本机照片也会删除。</p></article>
           <button class="danger-button" id="clearDataButton" type="button">清除本机全部数据</button>
-          <p class="app-version">轻身 v1.0 · 生活方式记录工具，不替代医疗建议</p>
+          <p class="app-version">轻身 v1.1 · AI 结果仅供估算，不替代医疗建议</p>
         </section>
       </main>
 
@@ -142,7 +142,8 @@
         <div class="sheet-handle"></div>
         <div class="modal-head"><div><p class="eyebrow">记录一餐</p><h2 id="mealModalTitle">确认食物和份量</h2></div><button class="close-button" type="button" data-close="mealModal" aria-label="关闭">×</button></div>
         <img class="meal-preview" id="mealPreview" alt="本餐照片预览" hidden />
-        <div class="analysis-note" id="analysisNote"><span>✦</span><p><strong>辅助估算模式</strong><br />照片已保存在本机。选择常见食物可快速估算，保存前请根据实际份量确认。</p></div>
+        <div class="analysis-note" id="analysisNote"><span>✦</span><p><strong>辅助估算模式</strong><br />选择常见食物可快速估算，保存前请根据实际份量确认。</p></div>
+        <div class="ai-results" id="aiResults" hidden></div>
         <div class="quick-foods" id="quickFoods"></div>
         <form id="mealForm">
           <label>食物/餐名<input id="mealName" name="name" required maxlength="60" placeholder="例如：鸡胸肉蔬菜饭" /></label>
@@ -195,9 +196,16 @@
     <div class="modal-backdrop" id="infoModal" hidden>
       <section class="modal-sheet compact-sheet" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
         <div class="sheet-handle"></div>
-        <div class="modal-head"><h2 id="infoTitle">AI 照片识别</h2><button class="close-button" type="button" data-close="infoModal" aria-label="关闭">×</button></div>
-        <p class="info-copy">当前照片会保存在本机，并通过常见食物快捷项辅助估算。真正的视觉 AI 需要单独启用安全的服务端密钥；启用后仍会保留“确认后入账”，因为仅凭照片无法可靠判断隐藏油脂和准确重量。</p>
-        <button class="secondary-button" type="button" data-close="infoModal">我知道了</button>
+        <div class="modal-head"><div><p class="eyebrow">仅保存在这台设备</p><h2 id="infoTitle">连接 DeepSeek</h2></div><button class="close-button" type="button" data-close="infoModal" aria-label="关闭">×</button></div>
+        <p class="info-copy">密钥不会写入网页源码或导出备份。拍照识别时，压缩后的图片与分析要求会直接发送给 DeepSeek。AI 结果只是估算，仍需你确认。</p>
+        <form id="apiKeyForm">
+          <label>DeepSeek API 密钥
+            <div class="secret-field"><input id="deepSeekKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-••••••••••••" required /><button id="toggleKeyButton" type="button" aria-label="显示或隐藏密钥">显示</button></div>
+          </label>
+          <label class="check-row"><input id="rememberKey" type="checkbox" checked /><span>记住在此设备上</span></label>
+          <button class="primary-button" type="submit">保存并启用识图</button>
+          <button class="secondary-button danger-text" id="removeKeyButton" type="button" hidden>移除此设备上的密钥</button>
+        </form>
       </section>
     </div>
 
