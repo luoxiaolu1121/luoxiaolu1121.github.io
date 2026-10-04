@@ -242,6 +242,13 @@ function openAiSettings() {
 function setAnalysisState(kind, message = "") {
   const note = $("#analysisNote");
   note.className = `analysis-note${kind === "loading" ? " loading" : ""}${kind === "error" ? " error" : ""}`;
+  note.setAttribute("aria-busy", kind === "loading" ? "true" : "false");
+  const actions = $("#analysisActions");
+  actions.hidden = !["error", "needsKey"].includes(kind);
+  $("#retryAnalysisButton").hidden = kind === "needsKey";
+  const submit = $("#mealSubmitButton");
+  submit.disabled = kind === "loading";
+  submit.textContent = kind === "loading" ? "正在识别这顿饭…" : "确认并记入今天";
   const states = {
     loading: ["◌", "DeepSeek 正在识别", "正在分析食物、份量和热量，请稍候。"],
     done: ["✓", "识别完成，请确认", message || "照片无法准确判断隐藏油脂和重量，请按实际情况修正。"],
@@ -265,33 +272,49 @@ function validateAiResult(result) {
     confidence: Math.max(0, Math.min(1, Number(item.confidence) || 0))
   }));
   const calculatedTotal = items.reduce((sum, item) => sum + item.calories, 0);
+  const totalCalories = Math.max(0, Math.min(5000, Math.round(Number(result.totalCalories) || calculatedTotal)));
+  const calorieLow = Math.max(0, Math.min(totalCalories, Math.round(Number(result.calorieLow) || totalCalories * .8)));
+  const calorieHigh = Math.max(totalCalories, Math.min(5000, Math.round(Number(result.calorieHigh) || totalCalories * 1.2)));
   return {
     mealName: String(result.mealName || items.map((i) => i.name).join("、")).slice(0, 60),
     items,
-    totalCalories: Math.max(0, Math.min(5000, Math.round(Number(result.totalCalories) || calculatedTotal))),
+    totalCalories,
+    calorieLow,
+    calorieHigh,
     uncertainty: String(result.uncertainty || "照片估算可能遗漏烹调油、酱料或被遮挡的食物。").slice(0, 160)
   };
 }
 async function requestDeepSeek(photo, key) {
   const imageUrl = await blobToDataUrl(photo);
-  const response = await fetch("https://api.deepseek.com/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-    body: JSON.stringify({
-      model: "deepseek-flash",
-      messages: [
-        { role: "system", content: "你是一名谨慎的食物营养估算助手。只分析图片中可见的食物和饮料，不做医疗诊断。热量必须按可见份量估算，并明确不确定性。" },
-        { role: "user", content: [
-          { type: "text", text: "识别这张餐食照片。请只输出 JSON，格式示例：{\"mealName\":\"鸡胸肉蔬菜饭\",\"items\":[{\"name\":\"米饭\",\"portion\":\"约1碗\",\"estimatedGrams\":200,\"calories\":232,\"confidence\":0.8}],\"totalCalories\":520,\"uncertainty\":\"烹调油用量不可见\"}。items 列出每种食物；calories 与 totalCalories 使用千卡整数；confidence 为 0 到 1。不要输出 Markdown。" },
-          { type: "image_url", image_url: { url: imageUrl, detail: "low" } }
-        ] }
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 1000,
-      temperature: 0.2,
-      stream: false
-    })
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "deepseek-flash",
+        messages: [
+          { role: "system", content: "你是一名谨慎的食物营养估算助手。只分析图片中可见的食物和饮料，不做医疗诊断。热量必须按可见份量估算，并明确不确定性。" },
+          { role: "user", content: [
+            { type: "text", text: "识别这张餐食照片。请只输出 JSON，格式示例：{\"mealName\":\"鸡胸肉蔬菜饭\",\"items\":[{\"name\":\"米饭\",\"portion\":\"约1碗\",\"estimatedGrams\":200,\"calories\":232,\"confidence\":0.8}],\"totalCalories\":520,\"calorieLow\":440,\"calorieHigh\":620,\"uncertainty\":\"烹调油用量不可见\"}。items 列出每种食物；calories、totalCalories、calorieLow 和 calorieHigh 使用千卡整数；confidence 为 0 到 1。不要输出 Markdown。" },
+            { type: "image_url", image_url: { url: imageUrl, detail: "low" } }
+          ] }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1000,
+        temperature: 0.2,
+        stream: false
+      })
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("识别超时了，请检查网络后重新尝试。");
+    throw new Error("无法连接 DeepSeek，请检查网络后重新尝试。");
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) {
     const code = response.status;
     if (code === 401 || code === 403) throw new Error("API 密钥无效或没有权限，请在设置中更换密钥。");
@@ -313,7 +336,7 @@ async function analyzeMeal(photo) {
     $("#mealName").value = result.mealName;
     $("#mealCalories").value = result.totalCalories;
     $("#mealPortion").value = result.items.map((item) => `${item.name}${item.estimatedGrams ? `约${item.estimatedGrams}g` : ` ${item.portion}`}`).join("；").slice(0, 40);
-    $("#aiResults").innerHTML = result.items.map((item) => `<div class="ai-result-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.portion)}${item.estimatedGrams ? ` · 约 ${item.estimatedGrams}g` : ""} · 置信度 ${Math.round(item.confidence * 100)}%</small></div><b>${item.calories} 千卡</b></div>`).join("") + `<div class="ai-disclaimer">${escapeHtml(result.uncertainty)}</div>`;
+    $("#aiResults").innerHTML = `<div class="estimate-summary"><span>本餐估算</span><strong>约 ${result.totalCalories} 千卡</strong><small>合理范围 ${result.calorieLow}–${result.calorieHigh} 千卡</small></div>` + result.items.map((item) => `<div class="ai-result-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.portion)}${item.estimatedGrams ? ` · 约 ${item.estimatedGrams}g` : ""} · 置信度 ${Math.round(item.confidence * 100)}%</small></div><b>约 ${item.calories} 千卡</b></div>`).join("") + `<div class="ai-disclaimer">${escapeHtml(result.uncertainty)}</div>`;
     $("#aiResults").hidden = false;
     setAnalysisState("done", "AI 已自动填写结果；保存前请按实际份量修正。");
   } catch (error) {
@@ -356,11 +379,14 @@ $$('[data-nav]').forEach((button)=>button.addEventListener("click",()=>navigate(
 $$('[data-close]').forEach((button)=>button.addEventListener("click",()=>closeModal(button.dataset.close)));
 $$('.modal-backdrop').forEach((backdrop)=>backdrop.addEventListener("click",(event)=>{if(event.target===backdrop)closeModal(backdrop.id);}));
 $("#captureButton").addEventListener("click",()=>$("#photoInput").click());
+$("#emptyPhotoButton").addEventListener("click",()=>$("#photoInput").click());
 $("#photoInput").addEventListener("change",async(event)=>{const file=event.target.files[0];if(!file)return;try{const blob=await compressImage(file);openMeal(blob);}catch{toast("无法读取这张照片，请换一张试试");}event.target.value="";});
 $("#manualAddButton").addEventListener("click",()=>openMeal());
 $("#profileButton").addEventListener("click",openProfile);$("#editProfileButton").addEventListener("click",openProfile);
 $("#addWeightButton").addEventListener("click",()=>{$("#weightInput").value=state.profile?.weight||"";$("#weightDate").value=todayKey();openModal("weightModal");});
 $("#aiInfoButton").addEventListener("click",openAiSettings);
+$("#retryAnalysisButton").addEventListener("click",()=>{if(pendingPhoto)analyzeMeal(pendingPhoto);});
+$("#openKeySettingsButton").addEventListener("click",openAiSettings);
 $("#apiKeyForm").addEventListener("submit", (event) => {
   event.preventDefault(); const entered = $("#deepSeekKey").value.trim(); const existing = getDeepSeekKey(); const key = entered || existing;
   if (!key || !key.startsWith("sk-") || key.length < 20) return void toast("请输入有效的 DeepSeek API 密钥");

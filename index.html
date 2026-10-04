@@ -67,6 +67,7 @@
             <div class="empty-plate" aria-hidden="true"><span></span></div>
             <h3>还没有饮食记录</h3>
             <p>拍照保存这顿饭，再确认食物和份量。</p>
+            <button class="primary-small empty-photo-button" id="emptyPhotoButton" type="button">拍照记录第一餐</button>
           </div>
 
           <article class="coach-card" id="coachCard">
@@ -113,13 +114,13 @@
           <div class="page-title"><p class="eyebrow">只为你保存</p><h1>设置与数据</h1><p>当前版本的数据保存在这台设备的浏览器中。</p></div>
           <div class="settings-list">
             <button class="setting-row" id="editProfileButton" type="button"><span class="setting-icon">人</span><span><strong>个人资料与目标</strong><small>修改体重、活动量与减脂节奏</small></span><b>›</b></button>
-            <button class="setting-row" id="exportButton" type="button"><span class="setting-icon">出</span><span><strong>导出备份</strong><small>下载全部记录为 JSON 文件</small></span><b>›</b></button>
+            <button class="setting-row" id="exportButton" type="button"><span class="setting-icon">出</span><span><strong>导出备份</strong><small>下载文字记录，不含照片和密钥</small></span><b>›</b></button>
             <label class="setting-row file-row"><span class="setting-icon">入</span><span><strong>恢复备份</strong><small>从之前导出的 JSON 文件恢复</small></span><b>›</b><input id="importInput" type="file" accept="application/json" /></label>
             <button class="setting-row" id="aiInfoButton" type="button"><span class="setting-icon">AI</span><span><strong>DeepSeek 照片识别</strong><small id="aiStatus">未配置 · 点击添加 API 密钥</small></span><b>›</b></button>
           </div>
           <article class="privacy-card"><strong>照片与隐私</strong><p>启用识图时，压缩后的照片会发送给 DeepSeek 分析；饮食记录和照片仍保存在你的设备中。删除饮食记录时，对应本机照片也会删除。</p></article>
           <button class="danger-button" id="clearDataButton" type="button">清除本机全部数据</button>
-          <p class="app-version">轻身 v1.1 · AI 结果仅供估算，不替代医疗建议</p>
+          <p class="app-version">轻身 v1.2 · AI 结果仅供估算，不替代医疗建议</p>
         </section>
       </main>
 
@@ -142,7 +143,11 @@
         <div class="sheet-handle"></div>
         <div class="modal-head"><div><p class="eyebrow">记录一餐</p><h2 id="mealModalTitle">确认食物和份量</h2></div><button class="close-button" type="button" data-close="mealModal" aria-label="关闭">×</button></div>
         <img class="meal-preview" id="mealPreview" alt="本餐照片预览" hidden />
-        <div class="analysis-note" id="analysisNote"><span>✦</span><p><strong>辅助估算模式</strong><br />选择常见食物可快速估算，保存前请根据实际份量确认。</p></div>
+        <div class="analysis-note" id="analysisNote" aria-live="polite"><span>✦</span><p><strong>辅助估算模式</strong><br />选择常见食物可快速估算，保存前请根据实际份量确认。</p></div>
+        <div class="analysis-actions" id="analysisActions" hidden>
+          <button id="retryAnalysisButton" type="button">重新识别</button>
+          <button id="openKeySettingsButton" type="button">检查密钥</button>
+        </div>
         <div class="ai-results" id="aiResults" hidden></div>
         <div class="quick-foods" id="quickFoods"></div>
         <form id="mealForm">
@@ -152,7 +157,7 @@
             <label>份量说明<input id="mealPortion" name="portion" maxlength="40" placeholder="约 1 碗 / 350g" /></label>
           </div>
           <label>餐次<select id="mealType" name="type"><option value="早餐">早餐</option><option value="午餐">午餐</option><option value="晚餐">晚餐</option><option value="加餐">加餐</option></select></label>
-          <button class="primary-button" type="submit">确认并记入今天</button>
+          <button class="primary-button" id="mealSubmitButton" type="submit">确认并记入今天</button>
         </form>
       </section>
     </div>
@@ -163,7 +168,8 @@
         <div class="modal-head"><div><p class="eyebrow">建立你的基线</p><h2 id="profileModalTitle">个人资料与目标</h2></div><button class="close-button" type="button" data-close="profileModal" aria-label="关闭">×</button></div>
         <p class="form-intro">这些数据只用于估算热量预算。计算结果是起点，你可以随时调整。</p>
         <form id="profileForm">
-          <label>怎么称呼你<input id="profileName" name="name" maxlength="20" placeholder="例如：小林" /></label>
+          <p class="form-section-title"><span>1</span> 基本信息</p>
+          <label>怎么称呼你（选填）<input id="profileName" name="name" maxlength="20" placeholder="例如：小林" /></label>
           <div class="form-grid">
             <label>生理性别<select id="profileSex" name="sex"><option value="female">女性</option><option value="male">男性</option></select></label>
             <label>年龄<input id="profileAge" name="age" required type="number" inputmode="numeric" min="18" max="85" placeholder="30" /></label>
@@ -173,6 +179,7 @@
             <label>当前 kg<input id="profileWeight" name="weight" required type="number" inputmode="decimal" min="35" max="300" step="0.1" placeholder="70" /></label>
             <label>目标 kg<input id="profileGoal" name="goal" required type="number" inputmode="decimal" min="35" max="300" step="0.1" placeholder="60" /></label>
           </div>
+          <p class="form-section-title"><span>2</span> 目标与节奏</p>
           <label>日常活动量<select id="profileActivity" name="activity"><option value="1.2">久坐为主，几乎不运动</option><option value="1.375">每周轻度活动 1–3 天</option><option value="1.55">每周中等活动 3–5 天</option><option value="1.725">每周高强度活动 6–7 天</option></select></label>
           <label>希望每周减重<select id="profilePace" name="pace"><option value="0.25">0.25 kg · 轻松稳健</option><option value="0.5" selected>0.5 kg · 推荐节奏</option><option value="0.75">0.75 kg · 需要更严格执行</option></select></label>
           <div class="warning-inline" id="profileWarning" hidden></div>
