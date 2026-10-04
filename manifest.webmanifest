@@ -1,0 +1,13 @@
+{
+  "name": "轻身 · 私人减脂记录",
+  "short_name": "轻身",
+  "description": "私人饮食、热量与减脂计划记录工具",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#061113",
+  "theme_color": "#081719",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

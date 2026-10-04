@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#081719" />
+    <meta name="description" content="轻身：私人饮食、热量与减脂计划记录工具" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>轻身 · 私人减脂记录</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="轻身首页">
+          <span class="brand-mark" aria-hidden="true">轻</span>
+          <span>轻身</span>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" id="installButton" type="button" hidden aria-label="安装到桌面" title="安装到桌面">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3" /></svg>
+          </button>
+          <button class="avatar-button" id="profileButton" type="button" aria-label="编辑个人资料">我</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="page active" id="page-today" data-page="today">
+          <div class="greeting-row">
+            <div>
+              <p class="eyebrow" id="todayLabel"></p>
+              <h1 id="greeting">今天，稳稳向前</h1>
+            </div>
+            <div class="streak-pill"><span aria-hidden="true">✦</span><strong id="streakValue">0</strong> 天记录</div>
+          </div>
+
+          <article class="budget-card">
+            <div class="budget-copy">
+              <p>今日热量预算</p>
+              <div class="budget-number"><strong id="remainingCalories">—</strong><span>千卡可用</span></div>
+              <div class="budget-meta"><span id="consumedCalories">已摄入 —</span><span id="targetCalories">目标 —</span></div>
+            </div>
+            <div class="calorie-ring" id="calorieRing" role="img" aria-label="今日热量使用进度">
+              <div><strong id="ringPercent">0%</strong><span>已用</span></div>
+            </div>
+          </article>
+
+          <div class="metric-grid">
+            <article class="metric-card accent">
+              <span class="metric-icon">↘</span>
+              <div><small>本周趋势</small><strong id="weeklyTrend">待记录</strong></div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon">◎</span>
+              <div><small>距离目标</small><strong id="goalDistance">— kg</strong></div>
+            </article>
+          </div>
+
+          <div class="section-heading">
+            <div><p class="eyebrow">今日饮食</p><h2>每一餐都算数</h2></div>
+            <button class="text-button" id="manualAddButton" type="button">手动添加</button>
+          </div>
+          <div class="meal-list" id="mealList"></div>
+          <div class="empty-state" id="mealEmpty">
+            <div class="empty-plate" aria-hidden="true"><span></span></div>
+            <h3>还没有饮食记录</h3>
+            <p>拍照保存这顿饭，再确认食物和份量。</p>
+          </div>
+
+          <article class="coach-card" id="coachCard">
+            <div class="coach-badge">今日建议</div>
+            <p id="coachText">先完成个人资料，我会为你生成今天的可执行建议。</p>
+          </article>
+        </section>
+
+        <section class="page" id="page-plan" data-page="plan">
+          <div class="page-title"><p class="eyebrow">你的节奏</p><h1>减脂计划</h1><p>计划会随体重和记录自动更新，不追求极端速度。</p></div>
+          <article class="plan-hero">
+            <div><p>预计达成</p><strong id="planDate">—</strong><span id="planDuration">完善资料后生成</span></div>
+            <div class="goal-orbit"><span id="planGoalWeight">—</span><small>目标 kg</small></div>
+          </article>
+          <div class="plan-stats">
+            <div><span>每日目标</span><strong id="planCalories">—</strong><small>千卡</small></div>
+            <div><span>每周节奏</span><strong id="planPace">—</strong><small>kg</small></div>
+            <div><span>维持估算</span><strong id="planTdee">—</strong><small>千卡</small></div>
+          </div>
+          <div class="section-heading"><div><p class="eyebrow">本周行动</p><h2>只做三件事</h2></div></div>
+          <div class="action-list" id="actionList"></div>
+          <article class="safety-card">
+            <strong>稳健优先</strong>
+            <p>体重变化会受水分、睡眠和盐分影响，请看 2–4 周趋势。若你未满 18 岁、孕期/哺乳期、有进食障碍史或慢性疾病，请先咨询医生或注册营养师。</p>
+            <div class="source-links"><a href="https://www.cdc.gov/healthy-weight-growth/losing-weight/index.html" target="_blank" rel="noreferrer">CDC 稳健减重建议</a><a href="https://www.niddk.nih.gov/bwp" target="_blank" rel="noreferrer">NIH 体重规划工具</a></div>
+          </article>
+        </section>
+
+        <section class="page" id="page-progress" data-page="progress">
+          <div class="page-title"><p class="eyebrow">关注趋势，不审判一天</p><h1>进展</h1><p>固定在相似时间称重，曲线会更有参考价值。</p></div>
+          <article class="weight-card">
+            <div><span>当前体重</span><strong><b id="currentWeight">—</b> kg</strong><small id="weightChange">等待更多记录</small></div>
+            <button class="primary-small" id="addWeightButton" type="button">记录体重</button>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head"><h2>体重趋势</h2><span>最近 30 次</span></div>
+            <div class="chart-wrap"><canvas id="weightChart" aria-label="最近体重变化折线图"></canvas></div>
+          </article>
+          <div class="section-heading"><div><p class="eyebrow">记录</p><h2>最近称重</h2></div></div>
+          <div class="weight-history" id="weightHistory"></div>
+        </section>
+
+        <section class="page" id="page-settings" data-page="settings">
+          <div class="page-title"><p class="eyebrow">只为你保存</p><h1>设置与数据</h1><p>当前版本的数据保存在这台设备的浏览器中。</p></div>
+          <div class="settings-list">
+            <button class="setting-row" id="editProfileButton" type="button"><span class="setting-icon">人</span><span><strong>个人资料与目标</strong><small>修改体重、活动量与减脂节奏</small></span><b>›</b></button>
+            <button class="setting-row" id="exportButton" type="button"><span class="setting-icon">出</span><span><strong>导出备份</strong><small>下载全部记录为 JSON 文件</small></span><b>›</b></button>
+            <label class="setting-row file-row"><span class="setting-icon">入</span><span><strong>恢复备份</strong><small>从之前导出的 JSON 文件恢复</small></span><b>›</b><input id="importInput" type="file" accept="application/json" /></label>
+            <button class="setting-row" id="aiInfoButton" type="button"><span class="setting-icon">AI</span><span><strong>照片 AI 识别</strong><small id="aiStatus">待启用 · 当前使用辅助估算</small></span><b>›</b></button>
+          </div>
+          <article class="privacy-card"><strong>照片与隐私</strong><p>照片仅在你的设备上压缩和保存，不会自动上传。删除饮食记录时，对应照片也会删除。</p></article>
+          <button class="danger-button" id="clearDataButton" type="button">清除本机全部数据</button>
+          <p class="app-version">轻身 v1.0 · 生活方式记录工具，不替代医疗建议</p>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="主要导航">
+        <button class="nav-item active" type="button" data-nav="today"><span>⌂</span><b>今天</b></button>
+        <button class="nav-item" type="button" data-nav="plan"><span>◫</span><b>计划</b></button>
+        <div class="capture-slot">
+          <input id="photoInput" type="file" accept="image/*" capture="environment" />
+          <button class="capture-button" id="captureButton" type="button" aria-label="拍照记录饮食">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h3l1.2-2h7.6l1.2 2h3v10H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>
+          </button>
+        </div>
+        <button class="nav-item" type="button" data-nav="progress"><span>⌁</span><b>进展</b></button>
+        <button class="nav-item" type="button" data-nav="settings"><span>⚙</span><b>设置</b></button>
+      </nav>
+    </div>
+
+    <div class="modal-backdrop" id="mealModal" hidden>
+      <section class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="mealModalTitle">
+        <div class="sheet-handle"></div>
+        <div class="modal-head"><div><p class="eyebrow">记录一餐</p><h2 id="mealModalTitle">确认食物和份量</h2></div><button class="close-button" type="button" data-close="mealModal" aria-label="关闭">×</button></div>
+        <img class="meal-preview" id="mealPreview" alt="本餐照片预览" hidden />
+        <div class="analysis-note" id="analysisNote"><span>✦</span><p><strong>辅助估算模式</strong><br />照片已保存在本机。选择常见食物可快速估算，保存前请根据实际份量确认。</p></div>
+        <div class="quick-foods" id="quickFoods"></div>
+        <form id="mealForm">
+          <label>食物/餐名<input id="mealName" name="name" required maxlength="60" placeholder="例如：鸡胸肉蔬菜饭" /></label>
+          <div class="form-grid">
+            <label>热量（千卡）<input id="mealCalories" name="calories" required inputmode="decimal" type="number" min="0" max="5000" placeholder="520" /></label>
+            <label>份量说明<input id="mealPortion" name="portion" maxlength="40" placeholder="约 1 碗 / 350g" /></label>
+          </div>
+          <label>餐次<select id="mealType" name="type"><option value="早餐">早餐</option><option value="午餐">午餐</option><option value="晚餐">晚餐</option><option value="加餐">加餐</option></select></label>
+          <button class="primary-button" type="submit">确认并记入今天</button>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="profileModal" hidden>
+      <section class="modal-sheet profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+        <div class="sheet-handle"></div>
+        <div class="modal-head"><div><p class="eyebrow">建立你的基线</p><h2 id="profileModalTitle">个人资料与目标</h2></div><button class="close-button" type="button" data-close="profileModal" aria-label="关闭">×</button></div>
+        <p class="form-intro">这些数据只用于估算热量预算。计算结果是起点，你可以随时调整。</p>
+        <form id="profileForm">
+          <label>怎么称呼你<input id="profileName" name="name" maxlength="20" placeholder="例如：小林" /></label>
+          <div class="form-grid">
+            <label>生理性别<select id="profileSex" name="sex"><option value="female">女性</option><option value="male">男性</option></select></label>
+            <label>年龄<input id="profileAge" name="age" required type="number" inputmode="numeric" min="18" max="85" placeholder="30" /></label>
+          </div>
+          <div class="form-grid three">
+            <label>身高 cm<input id="profileHeight" name="height" required type="number" inputmode="decimal" min="130" max="230" placeholder="168" /></label>
+            <label>当前 kg<input id="profileWeight" name="weight" required type="number" inputmode="decimal" min="35" max="300" step="0.1" placeholder="70" /></label>
+            <label>目标 kg<input id="profileGoal" name="goal" required type="number" inputmode="decimal" min="35" max="300" step="0.1" placeholder="60" /></label>
+          </div>
+          <label>日常活动量<select id="profileActivity" name="activity"><option value="1.2">久坐为主，几乎不运动</option><option value="1.375">每周轻度活动 1–3 天</option><option value="1.55">每周中等活动 3–5 天</option><option value="1.725">每周高强度活动 6–7 天</option></select></label>
+          <label>希望每周减重<select id="profilePace" name="pace"><option value="0.25">0.25 kg · 轻松稳健</option><option value="0.5" selected>0.5 kg · 推荐节奏</option><option value="0.75">0.75 kg · 需要更严格执行</option></select></label>
+          <div class="warning-inline" id="profileWarning" hidden></div>
+          <button class="primary-button" type="submit">生成我的计划</button>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="weightModal" hidden>
+      <section class="modal-sheet compact-sheet" role="dialog" aria-modal="true" aria-labelledby="weightModalTitle">
+        <div class="sheet-handle"></div>
+        <div class="modal-head"><h2 id="weightModalTitle">记录今天的体重</h2><button class="close-button" type="button" data-close="weightModal" aria-label="关闭">×</button></div>
+        <form id="weightForm">
+          <label>体重（kg）<input id="weightInput" required type="number" inputmode="decimal" min="35" max="300" step="0.1" placeholder="68.5" /></label>
+          <label>日期<input id="weightDate" required type="date" /></label>
+          <button class="primary-button" type="submit">保存记录</button>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="infoModal" hidden>
+      <section class="modal-sheet compact-sheet" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
+        <div class="sheet-handle"></div>
+        <div class="modal-head"><h2 id="infoTitle">AI 照片识别</h2><button class="close-button" type="button" data-close="infoModal" aria-label="关闭">×</button></div>
+        <p class="info-copy">当前照片会保存在本机，并通过常见食物快捷项辅助估算。真正的视觉 AI 需要单独启用安全的服务端密钥；启用后仍会保留“确认后入账”，因为仅凭照片无法可靠判断隐藏油脂和准确重量。</p>
+        <button class="secondary-button" type="button" data-close="infoModal">我知道了</button>
+      </section>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
