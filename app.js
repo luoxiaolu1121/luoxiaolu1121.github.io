@@ -242,21 +242,24 @@ function openAiSettings() {
 function setAnalysisState(kind, message = "") {
   const note = $("#analysisNote");
   note.className = `analysis-note${kind === "loading" ? " loading" : ""}${kind === "error" ? " error" : ""}`;
-  note.setAttribute("aria-busy", kind === "loading" ? "true" : "false");
+  const isBusy = ["loading", "retrying"].includes(kind);
+  note.setAttribute("aria-busy", isBusy ? "true" : "false");
   const actions = $("#analysisActions");
   actions.hidden = !["error", "needsKey"].includes(kind);
   $("#retryAnalysisButton").hidden = kind === "needsKey";
   const submit = $("#mealSubmitButton");
-  submit.disabled = kind === "loading";
-  submit.textContent = kind === "loading" ? "正在识别这顿饭…" : "确认并记入今天";
+  submit.disabled = isBusy;
+  submit.textContent = isBusy ? "正在识别这顿饭…" : "确认并记入今天";
   const states = {
     loading: ["◌", "DeepSeek 正在识别", "正在分析食物、份量和热量，请稍候。"],
+    retrying: ["◌", "正在自动重试", "第一次结果不完整，正在换一种方式重新识别。"],
     done: ["✓", "识别完成，请确认", message || "照片无法准确判断隐藏油脂和重量，请按实际情况修正。"],
     needsKey: ["✦", "添加 DeepSeek 密钥后自动识别", "密钥只保存在此设备，不会写入公开网页源码。"],
     error: ["!", "识别失败", message || "你仍可使用常见食物或手动填写。"],
     manual: ["✦", "辅助估算模式", "选择常见食物可快速估算，保存前请根据实际份量确认。"]
   };
   const [icon, title, body] = states[kind] || states.manual;
+  note.classList.toggle("loading", isBusy);
   note.innerHTML = `<span>${icon}</span><p><strong>${escapeHtml(title)}</strong><br />${escapeHtml(body)}</p>`;
 }
 function blobToDataUrl(blob) {
@@ -284,30 +287,47 @@ function validateAiResult(result) {
     uncertainty: String(result.uncertainty || "照片估算可能遗漏烹调油、酱料或被遮挡的食物。").slice(0, 160)
   };
 }
-async function requestDeepSeek(photo, key) {
-  const imageUrl = await blobToDataUrl(photo);
+const MEAL_ANALYSIS_PROMPT = "识别这张餐食照片。请只输出 JSON，格式示例：{\"mealName\":\"鸡胸肉蔬菜饭\",\"items\":[{\"name\":\"米饭\",\"portion\":\"约1碗\",\"estimatedGrams\":200,\"calories\":232,\"confidence\":0.8}],\"totalCalories\":520,\"calorieLow\":440,\"calorieHigh\":620,\"uncertainty\":\"烹调油用量不可见\"}。items 列出每种食物；calories、totalCalories、calorieLow 和 calorieHigh 使用千卡整数；confidence 为 0 到 1。不要输出 Markdown。";
+
+function parseDeepSeekContent(content) {
+  const text = Array.isArray(content)
+    ? content.map((part) => typeof part === "string" ? part : part?.text || "").join("")
+    : String(content || "");
+  if (!text.trim()) throw new Error("EMPTY_RESPONSE");
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  try { return JSON.parse(cleaned); } catch {}
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch {}
+  }
+  throw new Error("INVALID_RESPONSE");
+}
+
+async function fetchDeepSeekCompletion(imageUrl, key, jsonMode, timeoutMs) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
+    const body = {
+      model: "deepseek-flash",
+      messages: [
+        { role: "system", content: "你是一名谨慎的食物营养估算助手。只分析图片中可见的食物和饮料，不做医疗诊断。热量必须按可见份量估算，并明确不确定性。" },
+        { role: "user", content: [
+          { type: "text", text: MEAL_ANALYSIS_PROMPT },
+          { type: "image_url", image_url: { url: imageUrl, detail: "low" } }
+        ] }
+      ],
+      max_tokens: 1200,
+      temperature: 0.2,
+      stream: false
+    };
+    if (jsonMode) body.response_format = { type: "json_object" };
     response = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       signal: controller.signal,
-      body: JSON.stringify({
-        model: "deepseek-flash",
-        messages: [
-          { role: "system", content: "你是一名谨慎的食物营养估算助手。只分析图片中可见的食物和饮料，不做医疗诊断。热量必须按可见份量估算，并明确不确定性。" },
-          { role: "user", content: [
-            { type: "text", text: "识别这张餐食照片。请只输出 JSON，格式示例：{\"mealName\":\"鸡胸肉蔬菜饭\",\"items\":[{\"name\":\"米饭\",\"portion\":\"约1碗\",\"estimatedGrams\":200,\"calories\":232,\"confidence\":0.8}],\"totalCalories\":520,\"calorieLow\":440,\"calorieHigh\":620,\"uncertainty\":\"烹调油用量不可见\"}。items 列出每种食物；calories、totalCalories、calorieLow 和 calorieHigh 使用千卡整数；confidence 为 0 到 1。不要输出 Markdown。" },
-            { type: "image_url", image_url: { url: imageUrl, detail: "low" } }
-          ] }
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 1000,
-        temperature: 0.2,
-        stream: false
-      })
+      body: JSON.stringify(body)
     });
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("识别超时了，请检查网络后重新尝试。");
@@ -323,9 +343,30 @@ async function requestDeepSeek(photo, key) {
     throw new Error(`DeepSeek 暂时不可用（${code}）。`);
   }
   const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("DeepSeek 没有返回识别结果，请重试。");
-  return validateAiResult(JSON.parse(content));
+  const choice = payload?.choices?.[0];
+  if (choice?.finish_reason === "content_filter") throw new Error("这张照片无法完成分析，请换一张更清晰的餐食照片。");
+  if (["insufficient_system_resource", "aborted"].includes(choice?.finish_reason)) throw new Error("RETRYABLE_RESPONSE");
+  return choice?.message?.content;
+}
+
+async function requestDeepSeek(photo, key) {
+  const imageUrl = await blobToDataUrl(photo);
+  try {
+    const content = await fetchDeepSeekCompletion(imageUrl, key, true, 28000);
+    return validateAiResult(parseDeepSeekContent(content));
+  } catch (error) {
+    if (!["EMPTY_RESPONSE", "INVALID_RESPONSE", "RETRYABLE_RESPONSE"].includes(error?.message)) throw error;
+  }
+  setAnalysisState("retrying");
+  try {
+    const content = await fetchDeepSeekCompletion(imageUrl, key, false, 24000);
+    return validateAiResult(parseDeepSeekContent(content));
+  } catch (error) {
+    if (["EMPTY_RESPONSE", "INVALID_RESPONSE", "RETRYABLE_RESPONSE"].includes(error?.message)) {
+      throw new Error("DeepSeek 连续两次没有返回完整结果，请稍后再试或手动填写。");
+    }
+    throw error;
+  }
 }
 async function analyzeMeal(photo) {
   const key = getDeepSeekKey();
